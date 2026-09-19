@@ -8,8 +8,12 @@ on:
       - main
       - dev
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  python:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -24,20 +28,52 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install dependencies
         run: uv sync --frozen
 
       - name: Lint
-        run: uv run ruff check videocaptioner/
+        run: uv run ruff check videocaptioner/ scripts/
 
       - name: Type check CLI
         run: uv run pyright videocaptioner/cli/
 
-      - name: Unit tests
-        run: uv run pytest tests/test_cli tests/test_dubbing -q
-
       - name: Build package
         run: uv build
+
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # pydub-based audio tests need the ffmpeg binary (mp3 export/decode)
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      # Full offline suite: external-service tests are deselected via
+      # pyproject addopts (-m "not integration"); LLM tests run against
+      # the mock_llm_client fixture in tests/conftest.py. No ffmpeg
+      # binary needed: pydub usages are WAV-only, and the single binary
+      # fixture (tests/test_thread/conftest.py) degrades to skip.
+      - name: Unit tests (full offline suite)
+        run: uv run pytest -q

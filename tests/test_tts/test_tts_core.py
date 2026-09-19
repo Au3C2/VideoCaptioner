@@ -148,7 +148,9 @@ class MockTTS(BaseTTS):
     def _synthesize(self, segment: TTSDataSeg, output_path: str) -> None:
         self.synthesize_calls.append((segment.text, output_path))
         # 创建虚拟音频文件
-        Path(output_path).write_text(f"mock audio: {segment.text}")
+        # Explicit encoding: the default ANSI codepage (e.g. cp1252 on CI
+        # Windows) cannot encode CJK text in the mock payload
+        Path(output_path).write_text(f"mock audio: {segment.text}", encoding="utf-8")
         # 更新 segment
         segment.audio_path = output_path
         segment.audio_duration = 1.0
