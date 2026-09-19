@@ -39,7 +39,7 @@ def _find_executable(bundle: Path) -> Path:
 def _find_bundled_tool(bundle: Path, name: str) -> Path:
     exe_name = f"{name}.exe" if platform.system() == "Windows" else name
     candidates = [
-        bundle / "_internal" / "resource" / "bin" / exe_name,
+        bundle / "lib" / "resource" / "bin" / exe_name,
         bundle / "resource" / "bin" / exe_name,
         bundle / "VideoCaptioner.app" / "Contents" / "Frameworks" / "resource" / "bin" / exe_name,
         bundle / "VideoCaptioner.app" / "Contents" / "Resources" / "resource" / "bin" / exe_name,

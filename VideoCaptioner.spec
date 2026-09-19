@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller build recipe for the VideoCaptioner desktop bundle.
 
-Produces two executables sharing one COLLECT (``_internal`` runtime dir):
+Produces two executables sharing one COLLECT (``lib`` runtime dir):
 - VideoCaptioner.exe     windowed GUI entry (videocaptioner/gui_entry.py)
 - VideoCaptioner-cli.exe console CLI entry (videocaptioner/__main__.py)
 """
@@ -131,6 +131,7 @@ gui_exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=icon,
+    contents_directory="lib",
 )
 
 cli_exe = EXE(
@@ -150,6 +151,7 @@ cli_exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=icon,
+    contents_directory="lib",
 )
 
 coll = COLLECT(

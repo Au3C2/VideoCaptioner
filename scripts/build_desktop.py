@@ -143,7 +143,7 @@ def verify_bundle() -> None:
         if not exe.exists():
             raise RuntimeError(f"Executable not found: {exe}")
 
-    data_root = bundle / "_internal"
+    data_root = bundle / "lib"
     required = [
         data_root / "resource" / "assets" / "logo.png",
         data_root / "resource" / "fonts" / "NotoSansSC-Regular.ttf",
@@ -203,7 +203,7 @@ def find_iscc() -> Path | None:
 
 
 def build_installer(version: str) -> Path:
-    """Compile packaging/installer.iss into artifacts/VideoCaptioner-<version>-windows-setup.exe."""
+    """Compile packaging/installer.iss into artifacts/VideoCaptioner-<version>-windows-x64-setup.exe."""
     iscc = find_iscc()
     if iscc is None:
         raise RuntimeError(
@@ -216,7 +216,7 @@ def build_installer(version: str) -> Path:
         f"/DMyAppVersion={version}",
         str(ROOT / "packaging" / "installer.iss"),
     ])
-    installer = ARTIFACT_DIR / f"VideoCaptioner-{version}-windows-setup.exe"
+    installer = ARTIFACT_DIR / f"VideoCaptioner-{version}-windows-x64-setup.exe"
     if not installer.exists():
         raise RuntimeError(f"Installer was not produced: {installer}")
     print(f"Created {installer.relative_to(ROOT)}")

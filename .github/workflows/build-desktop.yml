@@ -62,7 +62,7 @@ jobs:
       # GUI liveness is probed locally (--skip-gui keeps CI deterministic).
       - name: Installer acceptance test
         shell: bash
-        run: uv run python scripts/test_installer.py --installer artifacts/VideoCaptioner-*-windows-setup.exe --skip-gui
+        run: uv run python scripts/test_installer.py --installer artifacts/VideoCaptioner-*-windows-x64-setup.exe --skip-gui
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v7

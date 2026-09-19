@@ -11,7 +11,7 @@ The CLI smoke flow itself lives in smoke_desktop.run_smoke so local runs and
 CI use one implementation.
 
 Usage (flags can be combined):
-  python scripts/test_installer.py --installer artifacts/VideoCaptioner-1.2.3-windows-setup.exe
+  python scripts/test_installer.py --installer artifacts/VideoCaptioner-1.2.3-windows-x64-setup.exe
   python scripts/test_installer.py --portable artifacts/VideoCaptioner-1.2.3-windows-x64-portable.zip
   python scripts/test_installer.py --bundle dist/VideoCaptioner --skip-gui
 """
@@ -39,10 +39,10 @@ def _verify_bundle_tree(bundle: Path) -> None:
         bundle / "VideoCaptioner.exe",
         bundle / "VideoCaptioner-cli.exe",
         bundle / "unins000.exe",
-        bundle / "_internal" / "resource" / "assets" / "logo.png",
-        bundle / "_internal" / "resource" / "subtitle_style" / "ass-default.json",
-        bundle / "_internal" / "resource" / "bin" / "ffmpeg.exe",
-        bundle / "_internal" / "resource" / "bin" / "ffprobe.exe",
+        bundle / "lib" / "resource" / "assets" / "logo.png",
+        bundle / "lib" / "resource" / "subtitle_style" / "ass-default.json",
+        bundle / "lib" / "resource" / "bin" / "ffmpeg.exe",
+        bundle / "lib" / "resource" / "bin" / "ffprobe.exe",
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
@@ -155,8 +155,8 @@ def _verify_portable_tree(bundle: Path) -> None:
     required = [
         bundle / "VideoCaptioner.exe",
         bundle / "VideoCaptioner-cli.exe",
-        bundle / "_internal" / "resource" / "bin" / "ffmpeg.exe",
-        bundle / "_internal" / "resource" / "bin" / "ffprobe.exe",
+        bundle / "lib" / "resource" / "bin" / "ffmpeg.exe",
+        bundle / "lib" / "resource" / "bin" / "ffprobe.exe",
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:

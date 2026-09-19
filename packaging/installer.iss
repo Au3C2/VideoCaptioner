@@ -2,10 +2,10 @@
 ;
 ; Build with:  ISCC.exe packaging\installer.iss /DMyAppVersion=<version>
 ; Expected layout (paths relative to this file):
-;   ..\dist\VideoCaptioner\   - PyInstaller COLLECT output (VideoCaptioner.exe + VideoCaptioner-cli.exe + _internal)
+;   ..\dist\VideoCaptioner\   - PyInstaller COLLECT output (VideoCaptioner.exe + VideoCaptioner-cli.exe + lib)
 ;   ..\dist\VideoCaptioner\resource\assets\logo.ico - icon (copied into the bundle by PyInstaller)
 ;   ..\LICENSE
-; Output: ..\artifacts\VideoCaptioner-<version>-windows-setup.exe
+; Output: ..\artifacts\VideoCaptioner-<version>-windows-x64-setup.exe
 
 #define MyAppName "VideoCaptioner"
 #define MyAppPublisher "VideoCaptioner contributors"
@@ -33,7 +33,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\LICENSE
 OutputDir=..\artifacts
-OutputBaseFilename=VideoCaptioner-{#MyAppVersion}-windows-setup
+OutputBaseFilename=VideoCaptioner-{#MyAppVersion}-windows-x64-setup
 ; Per-user install: {autopf} resolves to %LOCALAPPDATA%\Programs, no admin needed
 PrivilegesRequired=lowest
 Compression=lzma2/max
