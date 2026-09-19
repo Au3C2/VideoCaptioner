@@ -42,14 +42,13 @@ jobs:
 
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-15-intel]
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - uses: astral-sh/setup-uv@v8.1.0
         with:
@@ -62,12 +61,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      # Runners ship with ffmpeg on PATH; pydub-based tests need it.
-      - name: Verify ffmpeg availability
-        run: ffmpeg -version
-
       # Full offline suite: external-service tests are deselected via
       # pyproject addopts (-m "not integration"); LLM tests run against
-      # the mock_llm_client fixture in tests/conftest.py.
+      # the mock_llm_client fixture in tests/conftest.py. No ffmpeg
+      # binary needed: pydub usages are WAV-only, and the single binary
+      # fixture (tests/test_thread/conftest.py) degrades to skip.
       - name: Unit tests (full offline suite)
         run: uv run pytest -q
