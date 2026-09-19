@@ -61,6 +61,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      # pydub-based audio tests need the ffmpeg binary (mp3 export/decode)
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
       # Full offline suite: external-service tests are deselected via
       # pyproject addopts (-m "not integration"); LLM tests run against
       # the mock_llm_client fixture in tests/conftest.py. No ffmpeg
