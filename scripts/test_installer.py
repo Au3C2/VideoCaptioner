@@ -106,7 +106,7 @@ def _uninstall(target: Path) -> None:
 def test_installer(installer: Path, skip_gui: bool) -> None:
     if not installer.is_file():
         raise FileNotFoundError(f"Installer not found: {installer}")
-    with tempfile.TemporaryDirectory(prefix="videocaptioner-install-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="videocaptioner-install-", ignore_cleanup_errors=True) as tmp:
         target = Path(tmp) / "VideoCaptioner"
         print(f"+ Silent-installing into {target}")
         subprocess.run([
@@ -141,7 +141,7 @@ def _extract_portable(portable: Path, dest: Path) -> Path:
 
 
 def test_portable(portable: Path, skip_gui: bool) -> None:
-    with tempfile.TemporaryDirectory(prefix="videocaptioner-portable-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="videocaptioner-portable-", ignore_cleanup_errors=True) as tmp:
         bundle = _extract_portable(portable, Path(tmp))
         print(f"+ Testing portable bundle at {bundle}")
         _verify_portable_tree(bundle)
