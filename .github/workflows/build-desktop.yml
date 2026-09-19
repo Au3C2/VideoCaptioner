@@ -1,4 +1,4 @@
-name: Build Desktop Apps
+name: Build Desktop Installer
 
 on:
   pull_request:
@@ -7,7 +7,9 @@ on:
       - "resource/**"
       - "scripts/build_desktop.py"
       - "scripts/smoke_desktop.py"
+      - "scripts/test_installer.py"
       - "VideoCaptioner.spec"
+      - "packaging/installer.iss"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/build-desktop.yml"
@@ -27,19 +29,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  desktop:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+  windows-installer:
+    name: Windows x64 installer + portable
+    runs-on: windows-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows x64
-            os: windows-latest
-          - name: macOS Intel
-            os: macos-15-intel
-
     steps:
       - uses: actions/checkout@v6
         with:
@@ -56,21 +49,30 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Build desktop bundle
+      # Builds the onedir bundle, the portable zip and the Inno Setup
+      # installer (ISCC is preinstalled on windows-latest runners).
+      - name: Build desktop bundle, portable zip and installer
         run: uv run --with pyinstaller --with static-ffmpeg python scripts/build_desktop.py --clean
 
-      - name: Smoke test packaged app
+      - name: Smoke test packaged CLI
         run: uv run python scripts/smoke_desktop.py dist/VideoCaptioner
 
-      - name: Upload desktop artifact
+      # Artifact acceptance test: silent install into a temp dir, bundle
+      # verification, CLI smoke from the installed path, silent uninstall.
+      # GUI liveness is probed locally (--skip-gui keeps CI deterministic).
+      - name: Installer acceptance test
+        shell: bash
+        run: uv run python scripts/test_installer.py --installer artifacts/VideoCaptioner-*-windows-setup.exe --skip-gui
+
+      - name: Upload desktop artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-${{ runner.os }}
-          path: artifacts/*.zip
+          name: desktop-windows
+          path: artifacts/*
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload to GitHub Release
+      - name: Upload to draft release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
@@ -78,5 +80,5 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --title "$TAG" --generate-notes
-          gh release upload "$TAG" artifacts/*.zip --clobber
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes
+          gh release upload "$TAG" artifacts/*.zip artifacts/*.exe --clobber
