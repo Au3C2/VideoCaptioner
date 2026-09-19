@@ -8,8 +8,12 @@ on:
       - main
       - dev
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  python:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -24,20 +28,46 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install dependencies
         run: uv sync --frozen
 
       - name: Lint
-        run: uv run ruff check videocaptioner/
+        run: uv run ruff check videocaptioner/ scripts/
 
       - name: Type check CLI
         run: uv run pyright videocaptioner/cli/
 
-      - name: Unit tests
-        run: uv run pytest tests/test_cli tests/test_dubbing -q
-
       - name: Build package
         run: uv build
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Runners ship with ffmpeg on PATH; pydub-based tests need it.
+      - name: Verify ffmpeg availability
+        run: ffmpeg -version
+
+      # Full offline suite: external-service tests are deselected via
+      # pyproject addopts (-m "not integration"); LLM tests run against
+      # the mock_llm_client fixture in tests/conftest.py.
+      - name: Unit tests (full offline suite)
+        run: uv run pytest -q
