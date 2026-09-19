@@ -2,14 +2,14 @@
 
 VideoCaptioner publishes Windows desktop artifacts from GitHub Actions:
 
-- `VideoCaptioner-<version>-windows-setup.exe` — Inno Setup installer
+- `VideoCaptioner-<version>-windows-x64-setup.exe` — Inno Setup installer
   (per-user install, no admin required, optional CLI PATH integration)
 - `VideoCaptioner-<version>-windows-x64-portable.zip` — portable bundle,
   extract and run
 
 Both artifacts are built from the same PyInstaller bundle, which contains a
 windowed GUI executable (`VideoCaptioner.exe`) and a console CLI executable
-(`VideoCaptioner-cli.exe`) sharing one `_internal` runtime directory. Users
+(`VideoCaptioner-cli.exe`) sharing one `lib` runtime directory. Users
 can run them without installing Python or FFmpeg (static ffmpeg/ffprobe are
 bundled).
 
@@ -39,7 +39,7 @@ locally and in CI:
 # installer: silent install into a temp dir, tree verification, CLI smoke
 # (version / doctor / real subtitle burn with bundled ffmpeg), GUI liveness
 # probe, silent uninstall
-uv run python scripts/test_installer.py --installer artifacts/VideoCaptioner-*-windows-setup.exe
+uv run python scripts/test_installer.py --installer artifacts/VideoCaptioner-*-windows-x64-setup.exe
 
 # portable: extract zip and run the same verification and smoke flow
 uv run python scripts/test_installer.py --portable artifacts/VideoCaptioner-*-windows-x64-portable.zip

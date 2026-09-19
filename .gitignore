@@ -50,3 +50,7 @@ videocaptioner/_version.py
 
 artifacts/
 .zcode/
+rel_tmp.json
+
+# CodeGraph index
+.codegraph/
