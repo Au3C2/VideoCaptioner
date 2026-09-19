@@ -18,8 +18,11 @@
 #endif
 
 [Setup]
-; Stable AppId: changing it breaks upgrade/uninstall detection
-AppId={{8A5D2E9C-4B7F-4E63-9C1A-52D64B7F3A10}}
+; Stable AppId: changing it breaks upgrade/uninstall detection.
+; The single closing brace is deliberate: with AppId={{...} the literal GUID
+; keeps one brace pair, so the uninstall registry key is {GUID}_is1
+; (which scripts/build_desktop.py find_iscc() looks up).
+AppId={{8A5D2E9C-4B7F-4E63-9C1A-52D64B7F3A10}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}

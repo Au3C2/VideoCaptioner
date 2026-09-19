@@ -29,6 +29,7 @@ from pathlib import Path
 from smoke_desktop import run_smoke
 
 GUI_PROBE_SECONDS = 10
+INSTALL_TIMEOUT_SECONDS = 300
 UNINSTALL_TIMEOUT_SECONDS = 90
 
 
@@ -114,9 +115,10 @@ def test_installer(installer: Path, skip_gui: bool) -> None:
             "/SUPPRESSMSGBOXES",
             "/NORESTART",
             f"/DIR={target}",
-            # Only the desktop icon task: keeps the test from touching user PATH
-            '/TASKS="desktopicon"',
-        ], check=True, timeout=UNINSTALL_TIMEOUT_SECONDS)
+            # Unquoted form is required: Inno does not strip the C-runtime
+            # quoting Python adds, and /TASKS=\"...\" would select no tasks
+            "/TASKS=desktopicon",
+        ], check=True, timeout=INSTALL_TIMEOUT_SECONDS)
         _verify_bundle_tree(target)
         run_smoke(target)
         if not skip_gui:
