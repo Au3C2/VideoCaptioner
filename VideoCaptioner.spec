@@ -170,13 +170,25 @@ coll = COLLECT(
 )
 
 if sys.platform == "darwin":
+    # build_desktop.py renders resource/assets logo into a .icns and exports
+    # its path here; without it the bundle falls back to PyInstaller's
+    # default Python icon.
+    bundle_icon = os.environ.get("VIDEOCAPTIONER_APP_ICON", "")
+    bundle_kwargs = {"icon": bundle_icon} if bundle_icon and Path(bundle_icon).exists() else {}
+    bundle_version = os.environ.get("VIDEOCAPTIONER_APP_VERSION", "") or "0.0.0"
     app = BUNDLE(
         coll,
         name="VideoCaptioner.app",
+        version=bundle_version,
         bundle_identifier="com.weifeng.videocaptioner",
         info_plist={
             "CFBundleName": "VideoCaptioner",
             "CFBundleDisplayName": "VideoCaptioner",
             "NSHighResolutionCapable": True,
+            # The COLLECT contains the console CLI executable, so PyInstaller
+            # marks the whole bundle LSBackgroundOnly (no Dock icon, no
+            # Cmd-Tab). The GUI is a regular windowed app — override it.
+            "LSBackgroundOnly": False,
         },
+        **bundle_kwargs,
     )

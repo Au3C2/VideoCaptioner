@@ -29,6 +29,7 @@ def _find_executable(bundle: Path) -> Path:
     else:
         candidates.append(bundle / "VideoCaptioner-cli")
         candidates.append(bundle / "VideoCaptioner")
+        candidates.append(bundle / "VideoCaptioner.app" / "Contents" / "MacOS" / "VideoCaptioner-cli")
         candidates.append(bundle / "VideoCaptioner.app" / "Contents" / "MacOS" / "VideoCaptioner")
     for candidate in candidates:
         if candidate.exists():
@@ -41,6 +42,9 @@ def _find_bundled_tool(bundle: Path, name: str) -> Path:
     candidates = [
         bundle / "lib" / "resource" / "bin" / exe_name,
         bundle / "resource" / "bin" / exe_name,
+        # PyInstaller BUNDLE relocates the onedir COLLECT: binaries (incl.
+        # the bundled ffmpeg/ffprobe) land in Contents/Frameworks, data
+        # files in Contents/Resources.
         bundle / "VideoCaptioner.app" / "Contents" / "Frameworks" / "resource" / "bin" / exe_name,
         bundle / "VideoCaptioner.app" / "Contents" / "Resources" / "resource" / "bin" / exe_name,
     ]
