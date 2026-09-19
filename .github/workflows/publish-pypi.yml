@@ -27,6 +27,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      # The CLI dub tests assert preflight behavior that requires the
+      # ffmpeg binary on PATH (exit DEPENDENCY_MISSING vs USAGE_ERROR).
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Lint
         run: uv run ruff check videocaptioner/
 
