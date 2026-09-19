@@ -1,9 +1,10 @@
 import atexit
 import os
 import shutil
+import sys
 
 import psutil
-from PyQt5.QtCore import QSize, QThread, QUrl
+from PyQt5.QtCore import QRect, QSize, Qt, QThread, QTimer, QUrl
 from PyQt5.QtGui import QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import FluentIcon as FIF
@@ -104,6 +105,9 @@ class MainWindow(FluentWindow):
         self.setWindowIcon(QIcon(str(LOGO_PATH)))
         self.setWindowTitle(self.tr("卡卡字幕助手 -- VideoCaptioner"))
 
+        if sys.platform == "darwin":
+            self._init_mac_title_bar()
+
         self.setMicaEffectEnabled(cfg.get(cfg.micaEnabled))
 
         # 创建启动画面
@@ -118,6 +122,81 @@ class MainWindow(FluentWindow):
 
         self.show()
         QApplication.processEvents()
+        if sys.platform == "darwin":
+            self._position_mac_return_button()
+            QTimer.singleShot(0, self._position_mac_return_button)
+
+    def _init_mac_title_bar(self):
+        """macOS adjustments for the Fluent window chrome.
+
+        - Show the native traffic lights at the top-left (qfluentwidgets
+          draws Windows-style caption buttons at the top-right and keeps the
+          native ones hidden), inset like Finder windows.
+        - Move the navigation panel's return button into its own row at the
+          top of the rail icon column, below the traffic lights.
+        - Center the window icon and title in the title bar.
+        """
+        self.setSystemTitleBarButtonVisible(True)
+        self.titleBar.minBtn.hide()
+        self.titleBar.maxBtn.hide()
+        self.titleBar.closeBtn.hide()
+
+        title_bar = self.titleBar
+        title_bar.hBoxLayout.removeWidget(title_bar.iconLabel)
+        title_bar.hBoxLayout.removeWidget(title_bar.titleLabel)
+        title_bar.hBoxLayout.insertStretch(0, 1)
+        title_bar.hBoxLayout.insertWidget(1, title_bar.iconLabel, 0, Qt.AlignVCenter)
+        title_bar.hBoxLayout.insertWidget(2, title_bar.titleLabel, 0, Qt.AlignVCenter)
+        title_bar.hBoxLayout.insertStretch(3, 1)
+        # qframelesswindow's TitleBar base leaves a stretch of its own before
+        # the caption buttons, so the row ends up with one leading and two
+        # trailing spacers and the icon+title sit left of center. Keep only
+        # the leading spacer and one trailing spacer.
+        spacer_indexes = [
+            i for i in range(title_bar.hBoxLayout.count())
+            if title_bar.hBoxLayout.itemAt(i).spacerItem() is not None
+        ]
+        for i in reversed(spacer_indexes[2:]):
+            title_bar.hBoxLayout.takeAt(i)
+
+        panel = self.navigationInterface.panel
+        return_button = panel.returnButton
+        panel.topLayout.removeWidget(return_button)
+        # Push the menu button (and the items under it) below the return row.
+        panel.topLayout.setContentsMargins(4, 78, 4, 0)
+        return_button.setParent(panel)
+        return_button.setFixedSize(40, 36)
+        return_button.show()
+
+    def _position_mac_return_button(self):
+        """Center the return button on the nav rail's icon column axis.
+
+        The axis is read from the laid-out menu button rather than hardcoded,
+        so it stays aligned across DPI scales and layout revisions.
+        """
+        panel = self.navigationInterface.panel
+        menu_geometry = panel.menuButton.geometry()
+        return_button = panel.returnButton
+        return_button.setGeometry(
+            menu_geometry.x() + (menu_geometry.width() - return_button.width()) // 2,
+            42,
+            return_button.width(),
+            return_button.height(),
+        )
+
+    def systemTitleBarRect(self, size: QSize) -> QRect:
+        """Place the native traffic lights Finder-style.
+
+        Metrics measured in points via AppKit/Accessibility (scale
+        independent): buttons are 14x16pt with 20pt center spacing. The
+        button container is the standard 28pt title bar, but it does not
+        clip its subviews, so the buttons are placed at Finder's vertical
+        position (top edge 18pt from the window top, center 26pt) and
+        Finder's horizontal inset (close origin x=18, center 25).
+        """
+        if sys.platform == "darwin":
+            return QRect(8, 26 - size.height() // 2, 74, size.height())
+        return super().systemTitleBarRect(size)
 
     def onGithubDialog(self):
         """打开GitHub"""
@@ -176,6 +255,12 @@ class MainWindow(FluentWindow):
         super().resizeEvent(e)
         if hasattr(self, "splashScreen"):
             self.splashScreen.resize(self.size())
+        if sys.platform == "darwin":
+            # FluentWindow offsets the title bar by its fixed 46pt Windows
+            # nav rail; on macOS the traffic lights and the centered title
+            # belong to the full-width window chrome.
+            self.titleBar.move(0, 0)
+            self.titleBar.resize(self.width(), self.titleBar.height())
 
     def closeEvent(self, event):
         # 关闭所有子界面
