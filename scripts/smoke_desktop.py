@@ -23,14 +23,17 @@ def _find_executable(bundle: Path) -> Path:
         return bundle
     candidates = []
     if platform.system() == "Windows":
+        # CLI exe first: the smoke tests exercise CLI commands
+        candidates.append(bundle / "VideoCaptioner-cli.exe")
         candidates.append(bundle / "VideoCaptioner.exe")
     else:
+        candidates.append(bundle / "VideoCaptioner-cli")
         candidates.append(bundle / "VideoCaptioner")
         candidates.append(bundle / "VideoCaptioner.app" / "Contents" / "MacOS" / "VideoCaptioner")
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(f"VideoCaptioner executable not found under {bundle}")
+    raise FileNotFoundError(f"VideoCaptioner CLI executable not found under {bundle}")
 
 
 def _find_bundled_tool(bundle: Path, name: str) -> Path:
@@ -105,12 +108,8 @@ def _duration(ffprobe: Path, media: Path) -> float:
     return float(data["format"]["duration"])
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("bundle", help="Path to dist/VideoCaptioner or an executable")
-    args = parser.parse_args()
-
-    bundle = Path(args.bundle).resolve()
+def run_smoke(bundle: Path) -> None:
+    """Run the full CLI smoke flow against a bundle directory or executable."""
     exe = _find_executable(bundle)
     ffmpeg = _find_bundled_tool(bundle, "ffmpeg")
     ffprobe = _find_bundled_tool(bundle, "ffprobe")
@@ -167,6 +166,13 @@ def main() -> int:
                 raise RuntimeError(f"Output duration is unexpectedly short: {output} ({seconds:.2f}s)")
             print(f"Verified {output.name}: {output.stat().st_size} bytes, {seconds:.2f}s")
 
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("bundle", help="Path to dist/VideoCaptioner or an executable")
+    args = parser.parse_args()
+
+    run_smoke(Path(args.bundle).resolve())
     return 0
 
 

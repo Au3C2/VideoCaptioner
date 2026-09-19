@@ -125,7 +125,7 @@ def _archive_dir(source: Path, archive: Path) -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
     if archive.exists():
         archive.unlink()
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for file in sorted(source.rglob("*")):
             if file.is_file():
                 zf.write(file, file.relative_to(source.parent))
@@ -134,12 +134,14 @@ def _archive_dir(source: Path, archive: Path) -> None:
 
 def verify_bundle() -> None:
     bundle = DIST_DIR / "VideoCaptioner"
-    if platform.system() == "Windows":
-        exe = bundle / "VideoCaptioner.exe"
-    else:
-        exe = bundle / "VideoCaptioner"
-    if not exe.exists():
-        raise RuntimeError(f"Executable not found: {exe}")
+    suffix = ".exe" if platform.system() == "Windows" else ""
+    required_exes = [
+        bundle / f"VideoCaptioner{suffix}",
+        bundle / f"VideoCaptioner-cli{suffix}",
+    ]
+    for exe in required_exes:
+        if not exe.exists():
+            raise RuntimeError(f"Executable not found: {exe}")
 
     data_root = bundle / "_internal"
     required = [
@@ -158,16 +160,74 @@ def verify_bundle() -> None:
 def archive(version: str) -> None:
     bundle = DIST_DIR / "VideoCaptioner"
     tag = _platform_tag()
-    _archive_dir(bundle, ARTIFACT_DIR / f"VideoCaptioner-{version}-{tag}.zip")
+    _archive_dir(bundle, ARTIFACT_DIR / f"VideoCaptioner-{version}-{tag}-portable.zip")
     app = DIST_DIR / "VideoCaptioner.app"
     if app.exists():
         _archive_dir(app, ARTIFACT_DIR / f"VideoCaptioner-{version}-{tag}-app.zip")
+
+
+def find_iscc() -> Path | None:
+    """Locate the Inno Setup compiler (ISCC.exe)."""
+    import winreg
+
+    candidates = []
+    env_iscc = os.environ.get("VIDEOCAPTIONER_ISCC")
+    if env_iscc:
+        candidates.append(Path(env_iscc))
+    which = shutil.which("ISCC")
+    if which:
+        candidates.append(Path(which))
+    for base in [
+        os.environ.get("ProgramFiles(x86)"),
+        os.environ.get("ProgramFiles"),
+        # Per-user Inno Setup install location (PrivilegesRequired=lowest)
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"),
+    ]:
+        if base:
+            candidates.append(Path(base) / "Inno Setup 6" / "ISCC.exe")
+    registry_keys = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8A5D2E9C-4B7F-4E63-9C1A-52D64B7F3A10}_is1"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8A5D2E9C-4B7F-4E63-9C1A-52D64B7F3A10}_is1"),
+    ]
+    for hive, key in registry_keys:
+        try:
+            with winreg.OpenKey(hive, key) as reg_key:
+                install_location, _ = winreg.QueryValueEx(reg_key, "InstallLocation")
+                candidates.append(Path(install_location) / "ISCC.exe")
+        except OSError:
+            pass
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def build_installer(version: str) -> Path:
+    """Compile packaging/installer.iss into artifacts/VideoCaptioner-<version>-windows-setup.exe."""
+    iscc = find_iscc()
+    if iscc is None:
+        raise RuntimeError(
+            "Inno Setup compiler (ISCC.exe) not found. Install it with "
+            "'winget install JRSoftware.InnoSetup' (local) or 'choco install innosetup -y' (CI), "
+            "or set VIDEOCAPTIONER_ISCC to the ISCC.exe path."
+        )
+    _run([
+        str(iscc),
+        f"/DMyAppVersion={version}",
+        str(ROOT / "packaging" / "installer.iss"),
+    ])
+    installer = ARTIFACT_DIR / f"VideoCaptioner-{version}-windows-setup.exe"
+    if not installer.exists():
+        raise RuntimeError(f"Installer was not produced: {installer}")
+    print(f"Created {installer.relative_to(ROOT)}")
+    return installer
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--clean", action="store_true", help="Remove build/dist/artifacts first")
     parser.add_argument("--no-archive", action="store_true", help="Build and verify without creating zip archives")
+    parser.add_argument("--no-installer", action="store_true", help="Skip the Inno Setup installer (portable zip only)")
     args = parser.parse_args()
 
     version = _version()
@@ -179,6 +239,8 @@ def main() -> int:
     verify_bundle()
     if not args.no_archive:
         archive(version)
+    if platform.system() == "Windows" and not args.no_installer:
+        build_installer(version)
     return 0
 
 
