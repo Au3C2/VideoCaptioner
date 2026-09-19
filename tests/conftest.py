@@ -1,8 +1,12 @@
 """Root-level test configuration and shared fixtures."""
 
+import json
 import os
-from typing import Dict, List
+import re
+from types import SimpleNamespace
+from typing import Any, Dict, List
 
+import json_repair
 import pytest
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
@@ -48,6 +52,178 @@ def check_env_vars():
         if missing:
             pytest.skip(f"Required environment variables not set: {', '.join(missing)}")
     return _check
+
+
+# ============================================================================
+# Fake LLM client
+# ============================================================================
+
+# Marker phrase used by the sentence-splitting prompt
+_SPLIT_MARKER = "following sentence:"
+# Per-segment unit limit for the fake splitter; low enough to satisfy every
+# max_word_count used by production prompts (their minimum is 12)
+_SPLIT_UNIT_LIMIT = 5
+# One token = a latin/digit word, a whitespace run, or a single character
+# (CJK chars and punctuation each arrive as single characters)
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+|\s+|.", re.UNICODE)
+
+
+def _fake_split_text(text: str) -> str:
+    """Greedily split text into <br>-separated segments, preserving content."""
+    segments: List[str] = []
+    buf: List[str] = []
+    count = 0
+
+    def flush() -> None:
+        segment = "".join(buf).strip()
+        if segment:
+            segments.append(segment)
+        buf.clear()
+
+    for match in _TOKEN_RE.finditer(text):
+        token = match.group(0)
+        if token.isspace():
+            buf.append(token)
+            continue
+        if count >= _SPLIT_UNIT_LIMIT:
+            flush()
+            count = 0
+        buf.append(token)
+        count += 1
+    flush()
+
+    return "<br>".join(segments) if segments else text
+
+
+def _fake_llm_content(messages: List[dict]) -> str:
+    """Produce a deterministic response body for the given chat messages.
+
+    Dispatch by message shape:
+    - sentence splitting: echo the text back with <br> separators
+    - translation / optimization agent loops: echo the subtitle dict back
+    - anything else (e.g. single-item translation): echo the user message
+    """
+    # Sentence splitting prompt asks to separate "the following sentence"
+    for message in messages:
+        content = message.get("content")
+        if message.get("role") == "user" and isinstance(content, str):
+            _, marker, text = content.partition(_SPLIT_MARKER + "\n")
+            if marker and text.strip():
+                return _fake_split_text(text)
+
+    # Agent loops pass a subtitle dict; return it unchanged so key-set and
+    # content-similarity validations pass on the first round
+    for message in reversed(messages):
+        content = message.get("content")
+        if not isinstance(content, str):
+            continue
+        if "<input_subtitle>" in content:
+            inner = content.split("<input_subtitle>", 1)[1]
+            inner = inner.split("</input_subtitle>", 1)[0]
+            return json.dumps(json_repair.loads(inner), ensure_ascii=False)
+        try:
+            data = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(data, dict) and data and all(
+            isinstance(value, str) for value in data.values()
+        ):
+            return json.dumps(data, ensure_ascii=False)
+
+    # Fallback: echo the last user message
+    for message in reversed(messages):
+        content = message.get("content")
+        if message.get("role") == "user" and isinstance(content, str):
+            return content
+    return ""
+
+
+class FakeLLMClient:
+    """Minimal OpenAI-compatible client returning deterministic responses."""
+
+    def __init__(self):
+        self.calls: List[dict] = []
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create)
+        )
+
+    def _create(
+        self,
+        *,
+        model: str,
+        messages: List[dict],
+        temperature: float = 1.0,
+        **kwargs: Any,
+    ):
+        self.calls.append(
+            {"model": model, "messages": messages, "temperature": temperature}
+        )
+        content = _fake_llm_content(messages)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+            model=model,
+        )
+
+
+@pytest.fixture
+def mock_llm_client(monkeypatch, tmp_path) -> FakeLLMClient:
+    """Replace the global OpenAI client with an offline fake.
+
+    All production LLM traffic funnels through
+    ``videocaptioner.core.llm.client.call_llm`` -> ``get_llm_client()``, which
+    reads the module-level ``_global_client`` singleton at call time. Patching
+    that singleton therefore covers the splitter, optimizer, translators and
+    background threads without touching each call site.
+
+    Note: a QThread test that hits its 60s timeout may still be running after
+    teardown restores ``_global_client``; in that case ``get_llm_client()``
+    would rebuild a real client if env vars are set. Normal paths join the
+    thread before teardown, so this is only reachable on hangs.
+    """
+    from videocaptioner.core.llm import client as llm_client_module
+
+    fake = FakeLLMClient()
+    monkeypatch.setattr(llm_client_module, "_global_client", fake)
+
+    # SubtitleThread validates the LLM endpoint with a real network call
+    # before doing any work; bypass that for mocked tests
+    try:
+        from videocaptioner.ui.thread import subtitle_thread
+
+        def _fake_setup_llm_config(self):
+            """Skip endpoint validation and return the config unchanged."""
+            return self.task.subtitle_config
+
+        monkeypatch.setattr(
+            subtitle_thread.SubtitleThread,
+            "_setup_llm_config",
+            _fake_setup_llm_config,
+        )
+    except ImportError:
+        pass
+
+    # BaseTranslator reads/writes the persistent translate cache directly,
+    # bypassing the global cache switch. Redirect it to a temp directory so
+    # mock translations never leak into (or get served from) real app cache.
+    from diskcache import Cache
+
+    from videocaptioner.core.translate import base as translate_base
+
+    translate_cache = Cache(str(tmp_path / "translate_cache"))
+    monkeypatch.setattr(
+        translate_base, "get_translate_cache", lambda: translate_cache
+    )
+
+    # call_llm is memoized against the persistent LLM cache; drop whatever the
+    # fake produced so mock responses never leak into real runs. Track keys by
+    # equality: cache keys are not guaranteed to be hashable.
+    llm_cache = cache.get_llm_cache()
+    keys_before = list(llm_cache)
+    yield fake
+    for key in list(llm_cache):
+        if key not in keys_before:
+            llm_cache.delete(key)
+    translate_cache.close()
 
 
 @pytest.fixture

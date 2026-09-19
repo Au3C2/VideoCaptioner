@@ -147,7 +147,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --strict-markers --tb=short --disable-warnings"
+addopts = "-v --strict-markers --tb=short --disable-warnings -m 'not integration'"
 markers = [
     "integration: Integration tests that require external services",
     "slow: Slow running tests",

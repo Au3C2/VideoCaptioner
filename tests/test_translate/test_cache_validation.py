@@ -8,16 +8,21 @@ from diskcache import Cache
 from videocaptioner.core.utils.cache import (
     disable_cache,
     enable_cache,
+    is_cache_enabled,
     memoize,
 )
 
 
 @pytest.fixture(autouse=True)
 def ensure_cache_enabled():
-    """Ensure cache is enabled before each test."""
+    """Run each test with cache enabled, restoring the prior state afterwards."""
+    was_enabled = is_cache_enabled()
     enable_cache()
     yield
-    enable_cache()  # Re-enable after test
+    if was_enabled:
+        enable_cache()
+    else:
+        disable_cache()
 
 
 @pytest.fixture

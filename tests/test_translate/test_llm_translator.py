@@ -17,9 +17,8 @@ from videocaptioner.core.translate.llm_translator import LLMTranslator
 from videocaptioner.core.utils import cache
 
 
-@pytest.mark.integration
 class TestLLMTranslator:
-    """Test suite for LLMTranslator with OpenAI-compatible APIs."""
+    """Test suite for LLMTranslator (offline via mock_llm_client unless noted)."""
 
     @pytest.fixture
     def llm_translator(
@@ -100,9 +99,13 @@ class TestLLMTranslator:
     ) -> None:
         """Test that caching mechanism works correctly (using mock LLM)."""
         cache.enable_cache()
-
-        result1 = llm_translator.translate_subtitle(sample_asr_data)
-        result2 = llm_translator.translate_subtitle(sample_asr_data)
+        try:
+            result1 = llm_translator.translate_subtitle(sample_asr_data)
+            result2 = llm_translator.translate_subtitle(sample_asr_data)
+        finally:
+            # conftest.py disables caching globally; restore that state so the
+            # persistent cache never leaks into other tests
+            cache.disable_cache()
 
         print("\n" + "=" * 60)
         print("LLM Cache Test:")
@@ -116,6 +119,7 @@ class TestLLMTranslator:
         for seg1, seg2 in zip(result1.segments, result2.segments):
             assert seg1.translated_text == seg2.translated_text
 
+    @pytest.mark.integration
     @pytest.mark.parametrize(
         "target_language",
         [TargetLanguage.SIMPLIFIED_CHINESE],

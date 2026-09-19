@@ -14,6 +14,10 @@ tests/test_translate/
 
 ## 🚀 运行测试
 
+> 默认已跳过标记为 `@pytest.mark.integration` 的外部服务测试（pyproject.toml 中 `addopts` 含 `-m "not integration"`）。
+> 如需运行：`uv run pytest -m integration -v`。
+> 依赖 LLM 的用例通过 `mock_llm_client` fixture（tests/conftest.py）离线运行，无需 API key。
+
 ### 快速测试（免费 API）
 
 ```bash
