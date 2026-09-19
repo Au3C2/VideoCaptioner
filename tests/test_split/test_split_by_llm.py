@@ -12,9 +12,8 @@ import pytest
 from videocaptioner.core.split.split_by_llm import count_words, split_by_llm
 
 
-@pytest.mark.integration
 class TestSplitByLLM:
-    """Test suite for LLM-based text splitting."""
+    """Test suite for LLM-based text splitting (offline via mock_llm_client)."""
 
     def test_count_words_chinese(self):
         """Test word counting for Chinese text."""

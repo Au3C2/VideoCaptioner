@@ -6,17 +6,14 @@ Requires environment variables:
     OPENAI_MODEL: Model name (optional, defaults to gpt-4o-mini)
 """
 
-from typing import Callable
-
 import pytest
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.optimize.optimize import SubtitleOptimizer
 
 
-@pytest.mark.integration
 class TestSubtitleOptimizer:
-    """Test suite for SubtitleOptimizer with agent loop."""
+    """Test suite for SubtitleOptimizer with agent loop (offline via mock_llm_client)."""
 
     @pytest.fixture
     def optimizer(self, mock_llm_client) -> SubtitleOptimizer:
@@ -55,11 +52,8 @@ class TestSubtitleOptimizer:
         self,
         optimizer: SubtitleOptimizer,
         sample_asr_data: ASRData,
-        check_env_vars: Callable,
     ):
         """Test basic optimization functionality."""
-        check_env_vars("OPENAI_BASE_URL", "OPENAI_API_KEY")
-
         result = optimizer.optimize_subtitle(sample_asr_data)
 
         print("\n" + "=" * 80)
@@ -84,11 +78,8 @@ class TestSubtitleOptimizer:
         self,
         optimizer: SubtitleOptimizer,
         sample_asr_data: ASRData,
-        check_env_vars: Callable,
     ):
         """Test agent loop validation and correction."""
-        check_env_vars("OPENAI_BASE_URL", "OPENAI_API_KEY")
-
         result = optimizer.optimize_subtitle(sample_asr_data)
 
         print("\n" + "=" * 80)
