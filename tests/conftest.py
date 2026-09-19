@@ -166,7 +166,7 @@ class FakeLLMClient:
 
 
 @pytest.fixture
-def mock_llm_client(monkeypatch) -> FakeLLMClient:
+def mock_llm_client(monkeypatch, tmp_path) -> FakeLLMClient:
     """Replace the global OpenAI client with an offline fake.
 
     All production LLM traffic funnels through
@@ -174,6 +174,11 @@ def mock_llm_client(monkeypatch) -> FakeLLMClient:
     reads the module-level ``_global_client`` singleton at call time. Patching
     that singleton therefore covers the splitter, optimizer, translators and
     background threads without touching each call site.
+
+    Note: a QThread test that hits its 60s timeout may still be running after
+    teardown restores ``_global_client``; in that case ``get_llm_client()``
+    would rebuild a real client if env vars are set. Normal paths join the
+    thread before teardown, so this is only reachable on hangs.
     """
     from videocaptioner.core.llm import client as llm_client_module
 
@@ -197,15 +202,28 @@ def mock_llm_client(monkeypatch) -> FakeLLMClient:
     except ImportError:
         pass
 
+    # BaseTranslator reads/writes the persistent translate cache directly,
+    # bypassing the global cache switch. Redirect it to a temp directory so
+    # mock translations never leak into (or get served from) real app cache.
+    from diskcache import Cache
+
+    from videocaptioner.core.translate import base as translate_base
+
+    translate_cache = Cache(str(tmp_path / "translate_cache"))
+    monkeypatch.setattr(
+        translate_base, "get_translate_cache", lambda: translate_cache
+    )
+
     # call_llm is memoized against the persistent LLM cache; drop whatever the
-    # fake produced so mock responses never leak into real runs. Cache keys
-    # may be unhashable (lists), so track them by equality, not by set.
+    # fake produced so mock responses never leak into real runs. Track keys by
+    # equality: cache keys are not guaranteed to be hashable.
     llm_cache = cache.get_llm_cache()
     keys_before = list(llm_cache)
     yield fake
     for key in list(llm_cache):
         if key not in keys_before:
             llm_cache.delete(key)
+    translate_cache.close()
 
 
 @pytest.fixture

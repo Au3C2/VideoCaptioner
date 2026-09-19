@@ -119,6 +119,7 @@ class TestLLMTranslator:
         for seg1, seg2 in zip(result1.segments, result2.segments):
             assert seg1.translated_text == seg2.translated_text
 
+    @pytest.mark.integration
     @pytest.mark.parametrize(
         "target_language",
         [TargetLanguage.SIMPLIFIED_CHINESE],
