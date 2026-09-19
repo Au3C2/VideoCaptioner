@@ -10,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -229,13 +230,15 @@ def build_app_icns() -> Path:
     return icns
 
 
-def _stage_dmg_background(stage: Path) -> bool:
+def _stage_dmg_background(stage: Path) -> None:
     """Create the DMG drag-install guide background image.
 
     A committed asset (packaging/dmg-assets/dmg-background.png) wins so the
     layout stays byte-identical between builds; otherwise a deterministic
-    placeholder is rendered from the app logo with PIL. The canvas matches
-    the 660x400 DMG window; icon slots sit at (150, 130) and (510, 130).
+    placeholder is rendered from the app logo with PIL. build_app_icns has
+    already verified the logo and PIL exist by the time this runs. The
+    canvas matches the 660x400 DMG window; icon slots sit at (150, 130)
+    and (510, 130).
     """
     background_dir = stage / ".background"
     background_dir.mkdir(parents=True, exist_ok=True)
@@ -245,7 +248,7 @@ def _stage_dmg_background(stage: Path) -> bool:
     if committed.exists():
         shutil.copy2(committed, target)
         print("Using committed DMG background image")
-        return True
+        return
 
     from PIL import Image, ImageDraw, ImageFont
 
@@ -271,7 +274,6 @@ def _stage_dmg_background(stage: Path) -> bool:
 
     canvas.save(target)
     print("Rendered deterministic DMG background image")
-    return True
 
 
 def _write_ds_store(volume_root: Path) -> None:
@@ -369,8 +371,7 @@ def build_dmg(version: str) -> Path:
     shutil.copytree(app, staged_app, symlinks=True)
     (stage / "Applications").symlink_to("/Applications")
 
-    if not _stage_dmg_background(stage):
-        print("WARNING: DMG will ship without a drag-install background")
+    _stage_dmg_background(stage)
     icns = os.environ.get("VIDEOCAPTIONER_APP_ICON")
     if icns and Path(icns).exists():
         shutil.copy2(icns, stage / ".VolumeIcon.icns")
@@ -404,10 +405,18 @@ def build_dmg(version: str) -> Path:
         ])
         _write_ds_store(mount_point)
     finally:
-        subprocess.run(
+        detach = subprocess.run(
             ["hdiutil", "detach", str(mount_point), "-force", "-quiet"],
             capture_output=True,
         )
+        if detach.returncode != 0:
+            # Detach can transiently fail with 'Resource busy'; retry once
+            # before leaving a stale mounted volume behind.
+            time.sleep(2)
+            subprocess.run(
+                ["hdiutil", "detach", str(mount_point), "-force", "-quiet"],
+                capture_output=True,
+            )
         shutil.rmtree(mount_point, ignore_errors=True)
 
     dmg = ARTIFACT_DIR / f"VideoCaptioner-{version}-{_platform_tag()}.dmg"

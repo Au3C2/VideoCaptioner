@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_DIR = ROOT / "artifacts"
 
 GUI_PROBE_SECONDS = 10
+DETACH_RETRY_SECONDS = 2
 
 
 def _detach_stale_attachments(dmg_path: Path) -> None:
@@ -78,6 +79,18 @@ def _require(path: Path, description: str) -> None:
     print(f"PASS: {description} ({path})")
 
 
+def _verify_codesign(app: Path) -> None:
+    result = subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", str(app)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"ad-hoc code signature does not verify: {detail}")
+    print("PASS: ad-hoc code signature verifies (--deep --strict)")
+
+
 def _verify_layout(mount_point: Path) -> Path:
     """Verify the drag-install layout and return the .app bundle path."""
     apps = [entry for entry in mount_point.iterdir() if entry.suffix == ".app"]
@@ -96,21 +109,19 @@ def _verify_layout(mount_point: Path) -> Path:
     if backgrounds and backgrounds[0].stat().st_size > 1_000:
         print(f"PASS: drag-install background image ({backgrounds[0].name})")
     else:
-        raise RuntimeError("DMG missing a usable .background/dmg-background.png")
+        raise RuntimeError("DMG missing a usable background image in .background/ (*.png)")
 
-    _require(mount_point / ".DS_Store", "Finder layout (.DS_Store with icon positions)")
+    if (mount_point / ".DS_Store").exists():
+        print("PASS: Finder layout (.DS_Store) present")
+    else:
+        raise RuntimeError("DMG missing the .DS_Store Finder layout")
+
     if (mount_point / ".VolumeIcon.icns").exists():
         print("PASS: DMG volume icon present")
     else:
         print("WARNING: no .VolumeIcon.icns — mounted volume uses the default icon")
 
-    subprocess.run(
-        ["codesign", "--verify", "--deep", "--strict", str(app)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    print("PASS: ad-hoc code signature verifies (--deep --strict)")
+    _verify_codesign(app)
 
     macos_dir = app / "Contents" / "MacOS"
     _require(macos_dir / "VideoCaptioner", "GUI executable")
@@ -138,29 +149,21 @@ def _verify_layout(mount_point: Path) -> Path:
 
 
 def _default_install_dir() -> Path:
-    """Prefer a real /Applications install; fall back to a sandbox dir when
-    not writable (restricted machines)."""
-    applications = Path("/Applications")
-    if os_writable(applications):
-        return applications
-    sandbox = Path(tempfile.mkdtemp(prefix="videocaptioner-dmg-install-"))
-    print(f"/Applications not writable, using sandbox install dir: {sandbox}")
-    return sandbox
+    """Temp sandbox install dir (the safe default).
+
+    Installing into a real /Applications must be an explicit opt-in via
+    --install-dir, so the test never clobbers an existing installation.
+    """
+    return Path(tempfile.mkdtemp(prefix="videocaptioner-dmg-install-"))
 
 
-def os_writable(directory: Path) -> bool:
-    probe = directory / ".videocaptioner-dmg-write-probe"
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        probe.write_text("", encoding="utf-8")
-        probe.unlink()
-        return True
-    except OSError:
-        return False
-
-
-def _install(app: Path, install_dir: Path) -> Path:
+def _install(app: Path, install_dir: Path, force: bool) -> Path:
     installed = install_dir / app.name
+    if installed.exists() and not force:
+        raise RuntimeError(
+            f"{installed} already exists — refusing to replace it. "
+            "Pass --force to allow replacement (e.g. for a dedicated test install dir)."
+        )
     shutil.rmtree(installed, ignore_errors=True)
     print(f"+ Installing {app.name} into {install_dir}")
     shutil.copytree(app, installed, symlinks=True)
@@ -199,10 +202,11 @@ def _uninstall(installed: Path) -> None:
     print("Uninstall passed: no leftover files")
 
 
-def test_dmg(dmg: Path, install_dir: Path, skip_gui: bool) -> None:
+def test_dmg(dmg: Path, install_dir: Path, skip_gui: bool, force: bool) -> None:
     print(f"Testing DMG artifact: {dmg} ({dmg.stat().st_size / 1024 / 1024:.1f} MB)")
     _detach_stale_attachments(dmg)
     mount_point = Path(tempfile.mkdtemp(prefix="videocaptioner-dmg-mount-"))
+    installed: Path | None = None
     owned_install = False
     try:
         subprocess.run(
@@ -218,18 +222,21 @@ def test_dmg(dmg: Path, install_dir: Path, skip_gui: bool) -> None:
         print("PASS: DMG mounted read-only")
 
         app = _verify_layout(mount_point)
-        if not install_dir.exists():
-            install_dir.mkdir(parents=True)
-            owned_install = True
-        installed = _install(app, install_dir)
+        installed = _install(app, install_dir, force)
         run_smoke(install_dir)
         print("PASS: CLI smoke flow from installed location")
         if not skip_gui:
             _probe_gui(installed)
         _uninstall(installed)
+        installed = None
+    finally:
+        # Best-effort cleanup so a failed smoke/probe never leaves an
+        # installed .app (possibly in a user-visible directory) behind;
+        # the normal path already removed and verified it via _uninstall.
+        if installed is not None:
+            shutil.rmtree(installed, ignore_errors=True)
         if owned_install:
             shutil.rmtree(install_dir, ignore_errors=True)
-    finally:
         subprocess.run(
             ["hdiutil", "detach", str(mount_point), "-force", "-quiet"],
             capture_output=True,
@@ -252,14 +259,19 @@ def main() -> int:
         help="Install target directory (default: /Applications, or a temp sandbox if not writable)",
     )
     parser.add_argument("--skip-gui", action="store_true", help="Skip the GUI liveness probe")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow replacing an existing installation at the target path",
+    )
     args = parser.parse_args()
 
-    dmg = args.dmg if args.dmg else _find_dmg()
+    dmg = (args.dmg if args.dmg else _find_dmg()).resolve()
     if not dmg.is_file():
         raise FileNotFoundError(f"DMG not found: {dmg}")
-    install_dir = args.install_dir if args.install_dir else _default_install_dir()
+    install_dir = args.install_dir.resolve() if args.install_dir else _default_install_dir()
 
-    test_dmg(dmg, install_dir, args.skip_gui)
+    test_dmg(dmg, install_dir, args.skip_gui, args.force)
     print("DMG acceptance test passed")
     return 0
 
