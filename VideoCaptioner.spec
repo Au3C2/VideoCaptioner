@@ -1,5 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller build recipe for the VideoCaptioner desktop bundle."""
+"""PyInstaller build recipe for the VideoCaptioner desktop bundle.
+
+Produces two executables sharing one COLLECT (``_internal`` runtime dir):
+- VideoCaptioner.exe     windowed GUI entry (videocaptioner/gui_entry.py)
+- VideoCaptioner-cli.exe console CLI entry (videocaptioner/__main__.py)
+"""
 
 import os
 import sys
@@ -71,30 +76,69 @@ excludes = [
     "unittest",
 ]
 
-a = Analysis(
-    [str(ROOT / "videocaptioner" / "__main__.py")],
-    pathex=[str(ROOT)],
-    binaries=[],
-    datas=datas,
-    hiddenimports=hiddenimports,
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=excludes,
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
+# MSVC runtime DLLs must not be UPX-compressed (loader compatibility)
+upx_exclude = [
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "msvcp140.dll",
+    "concrt140.dll",
+    "ucrtbase.dll",
+]
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+icon = str(ROOT / "resource" / "assets" / "logo.ico")
+if not Path(icon).exists():
+    icon = None
 
-exe = EXE(
-    pyz,
-    a.scripts,
+
+def _analysis(entry: str):
+    return Analysis(
+        [str(ROOT / entry)],
+        pathex=[str(ROOT)],
+        binaries=[],
+        datas=datas,
+        hiddenimports=hiddenimports,
+        hookspath=[],
+        hooksconfig={},
+        runtime_hooks=[],
+        excludes=excludes,
+        win_no_prefer_redirects=False,
+        win_private_assemblies=False,
+        cipher=block_cipher,
+        noarchive=False,
+    )
+
+
+gui_a = _analysis("videocaptioner/gui_entry.py")
+cli_a = _analysis("videocaptioner/__main__.py")
+
+gui_pyz = PYZ(gui_a.pure, gui_a.zipped_data, cipher=block_cipher)
+cli_pyz = PYZ(cli_a.pure, cli_a.zipped_data, cipher=block_cipher)
+
+gui_exe = EXE(
+    gui_pyz,
+    gui_a.scripts,
     [],
     exclude_binaries=True,
     name="VideoCaptioner",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=icon,
+)
+
+cli_exe = EXE(
+    cli_pyz,
+    cli_a.scripts,
+    [],
+    exclude_binaries=True,
+    name="VideoCaptioner-cli",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -105,16 +149,21 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=icon,
 )
 
 coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+    gui_exe,
+    cli_exe,
+    gui_a.binaries,
+    gui_a.zipfiles,
+    gui_a.datas,
+    cli_a.binaries,
+    cli_a.zipfiles,
+    cli_a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=upx_exclude,
     name="VideoCaptioner",
 )
 

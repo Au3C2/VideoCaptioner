@@ -47,3 +47,6 @@ docs/.vitepress/dist/
 .claude/
 CLAUDE.md
 videocaptioner/_version.py
+
+artifacts/
+.zcode/
