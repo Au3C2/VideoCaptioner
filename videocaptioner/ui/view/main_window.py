@@ -126,7 +126,7 @@ class MainWindow(FluentWindow):
             self._position_mac_return_button()
             QTimer.singleShot(0, self._position_mac_return_button)
 
-    def _init_mac_title_bar(self):
+    def _init_mac_title_bar(self) -> None:
         """macOS adjustments for the Fluent window chrome.
 
         - Show the native traffic lights at the top-left (qfluentwidgets
@@ -135,6 +135,11 @@ class MainWindow(FluentWindow):
         - Move the navigation panel's return button into its own row at the
           top of the rail icon column, below the traffic lights.
         - Center the window icon and title in the title bar.
+
+        The hardcoded metrics below (78pt top margin, 42pt return-row top)
+        are tied to the pinned qfluentwidgets 1.8.4 layout: the title bar is
+        48pt high and the rail rail buttons are 40x36pt. Revisit them when
+        bumping qfluentwidgets.
         """
         self.setSystemTitleBarButtonVisible(True)
         self.titleBar.minBtn.hide()
@@ -168,7 +173,7 @@ class MainWindow(FluentWindow):
         return_button.setFixedSize(40, 36)
         return_button.show()
 
-    def _position_mac_return_button(self):
+    def _position_mac_return_button(self) -> None:
         """Center the return button on the nav rail's icon column axis.
 
         The axis is read from the laid-out menu button rather than hardcoded,

@@ -111,7 +111,7 @@ jobs:
       - name: Unit tests (full offline suite)
         run: uv run pytest -q
 
-      - name: Build desktop bundle, portable zips and DMG
+      - name: Build desktop bundle and DMG
         run: uv run --with pyinstaller --with static-ffmpeg --with ds-store --with mac-alias python scripts/build_desktop.py --clean
 
       - name: Smoke test packaged CLI
